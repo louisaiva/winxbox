@@ -5,6 +5,6 @@ It is designed to work on windows, in order to launch programs and play games wi
 
 ## todo
 
-- [x] mouse control
-- [x] graphic keyboard popup
-- [x] in-game mode
+- [ ] mouse control
+- [ ] graphic keyboard popup
+- [ ] in-game mode
