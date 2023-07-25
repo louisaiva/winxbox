@@ -1,8 +1,11 @@
 import os,time,threading,math
 import inputs
-import win32api, win32con
-import ctypes
+import win32api, win32con, win32gui
+# import ctypes
 
+import glfw
+import OpenGL.GL as gl
+from PIL import Image
 
 
 ##############################################
@@ -199,13 +202,102 @@ class Winxbox:
         
         
         
+        ## WINDOW
+        self.init_window()
+        
+        ## TEXTURES / ETC
+        self.init_textures()
+        
         ## start the main loop
         self.playing = True
         self.gameloop()
+  
+    ## INIT FUNCTIONS
     
+    def init_window(self):
+        
+        # initialisation de la librairie GLFW
+        glfw.init()
+    
+    
+        
+        ## position et taille de la fenetre
+        screen = glfw.get_monitors()
+        self.screen = glfw.get_video_mode(screen[0])
+        
+        w,h = int(self.screen.size.width/2), int(self.screen.size.height/2)
+        x,y = int(self.screen.size.width/2-w/2), int(self.screen.size.height/2-h/2)
+        
+    
+        # parametrage de la fenetre
+        glfw.window_hint(glfw.DECORATED , False)
+        glfw.window_hint(glfw.FLOATING , True)
+        glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER , True)
+        glfw.window_hint(glfw.VISIBLE , False)
+        
+        # creation de la fenetre
+        self.title = "winxbox"
+        self.window = glfw.create_window(w, h, self.title, None, None)
+        glfw.set_window_pos(self.window, x, y)
+
+        # paramétrage de la fonction de gestion des évènements
+        glfw.set_key_callback(self.window, self.window_events)
+        glfw.make_context_current(self.window)
+        
+        # paramétrage de la couleur de fond
+        # gl.glClearColor(0.05, 0.05, 0.05, 0)
+        gl.glClearColor(0.0, 0.0, 0.0, 0.0)
+        
+        
+        ## hide from taskbar & alt-tab
+        window = win32gui.FindWindow(None, self.title)
+        style = win32gui.GetWindowLong(window, win32con.GWL_EXSTYLE)
+        win32gui.SetWindowLong(window, win32con.GWL_EXSTYLE, (style & ~win32con.WS_EX_APPWINDOW) | win32con.WS_EX_TOOLWINDOW)
+        
+        ## OPENGL
+        gl.glViewport(0, 0, w, h)
+        gl.glMatrixMode(gl.GL_PROJECTION)
+        gl.glLoadIdentity()
+        gl.glOrtho(0.0, w, h, 0.0, 0.0, 1.0)
+        
+        
+        
+        ## show the window
+        glfw.show_window(self.window)
+        
+        # print the framebuffer transparent hint of the window to check if it worked
+        print("Transparent framebuffer: " + str(glfw.get_window_attrib(self.window, glfw.TRANSPARENT_FRAMEBUFFER)))
+        
+    def init_textures(self):
+        
+        self.evoli = self.load_texture("resources/evoli.png")
+        self.aquali = self.load_texture("resources/aquali.png")
+        self.desert = self.load_texture("resources/desert.jpg")
+        # print(self.evoli)
+
+    def load_texture(self,filename):
+        
+        if not os.path.exists(filename):
+            print(f'{25*"-"}\nError reading file:\n{filename}\n{25*"-"}')
+        im = Image.open(filename).convert('RGBA')
+        texture_id = gl.glGenTextures(1)
+        # sélection de la texture courante à partir de son identifiant
+        gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
+        # paramétrisation de la texture
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_REPEAT)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_REPEAT)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
+        # gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
+        gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGBA, im.width, im.height, 0, gl.GL_RGBA, gl.GL_UNSIGNED_BYTE, im.tobytes())
+        return texture_id
+
     ## ONCE CALLED FUNCTIONS
 
     def quit(self):
+        
+        glfw.destroy_window(self.window)
+        glfw.terminate()
         
         print("Program ended in " + str(self.ending_time - self.starting_time) + " seconds")
 
@@ -219,6 +311,10 @@ class Winxbox:
         
         while self.playing and self.controller.connected:
             
+            # clear the screen
+            # gl.glClearColor(0, 0, 0, 0)
+            gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+            
             ## UPDATE controller inputs & btns events
             self.follow_controller()
     
@@ -227,10 +323,20 @@ class Winxbox:
                 ## UPDATE mouse
                 self.update_mouse()
                 
+                ## DRAW
+                self.draw()
+                
             ## EVENTS
             self.events()
             
+            # swap buffers
+            glfw.swap_buffers(self.window)
+            # gestion des évènements
+            glfw.poll_events()
+            
+            #sleep
             time.sleep(0.000001)
+        
         
         # end of the program
         
@@ -398,6 +504,43 @@ class Winxbox:
             elif self.btn_events["X"] == -1:
                 self.mouse_declick(True)
     
+    def window_events(self,window,key,scancode,action,mods):
+        
+        if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
+            print("Escape pressed")
+            self.playing = False
+    
+    ## DRAW FUNCTIONS
+    
+    def draw(self):
+        
+        #enable
+        gl.glEnable(gl.GL_TEXTURE_2D)
+        
+        xc,yc = self.w/2, self.h/2
+        
+        # drawin
+        self.draw_texture(self.evoli,xc,yc,512,512)
+        
+        #disable
+        gl.glDisable(gl.GL_TEXTURE_2D)
+    
+    def draw_texture(self,texture_id, x=0, y=0, w=128, h=128):
+        
+        # draw the texture at the given position
+        # x,y is THE CENTER of the texture
+        
+        gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
+        gl.glBegin(gl.GL_QUADS)
+        gl.glTexCoord2f(0, 0)
+        gl.glVertex2f(x - w/2, y - h/2)
+        gl.glTexCoord2f(1, 0)
+        gl.glVertex2f(x + w/2, y - h/2)
+        gl.glTexCoord2f(1, 1)
+        gl.glVertex2f(x + w/2, y + h/2)
+        gl.glTexCoord2f(0, 1)
+        gl.glVertex2f(x - w/2, y + h/2)
+        gl.glEnd()
     
     ## ACTIONS FUNCTIONS
     
@@ -443,6 +586,28 @@ class Winxbox:
         win32api.keybd_event(0x53,0,0,0)
         win32api.keybd_event(0x53,0,2,0)
         win32api.keybd_event(win32con.VK_LWIN,0,2,0)
+
+
+    ## PROPERTIES FUNCTIONS
+    
+    @property
+    def w(self):
+        return glfw.get_window_size(self.window)[0]
+    @property
+    def h(self):
+        return glfw.get_window_size(self.window)[1]
+    @property
+    def wh(self):
+        return glfw.get_window_size(self.window)
+    @property
+    def x(self):
+        return glfw.get_window_pos(self.window)[0]
+    @property
+    def y(self):
+        return glfw.get_window_pos(self.window)[1]
+    @property
+    def xy(self):
+        return glfw.get_window_pos(self.window)
 
 ##############################################
 ## MAIN FUNCTION
